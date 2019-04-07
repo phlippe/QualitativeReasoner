@@ -24,7 +24,7 @@ class ContainerReasoner:
 		exogenous_terminations = self.create_exogenous_terminations(quantities[0])
 		poss_transitions = self.create_cross_product(epsilon_transitions, value_terminations, exogenous_terminations)
 		for t in poss_transitions:
-			next_state_quant = self.create_next_state(quantities, t)
+			next_state_quant = self.create_next_state(self.copy_quantities(quantities), t)
 			if next_state_quant is not None:
 				self.add_to_state_list(next_state_quant, orig_state)
 
@@ -76,6 +76,11 @@ class ContainerReasoner:
 		# Create set of larger transitions that summarize all possible transitions
 		# Already remove transitions that are not able (if for example one sets derivative to +, the other to -; unsure if that is even possible)
 		return list()
+
+	def create_next_state(self, quantities, transition):
+		# Apply transition and check if it leads to a valid state or not
+		# Unsure if we might need to handle ambiguity here or if it is done in the transitions
+		return None
 
 
 # Class for testing basic functionalities of reasoner above
