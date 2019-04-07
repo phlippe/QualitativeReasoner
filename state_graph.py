@@ -4,13 +4,24 @@ class Termination:
 
 	UNCHANGED = "unchanged"
 
-	def __init__(self, idx, vals):
-		self.indices = idx
+	def __init__(self, quantities, vals):
+		self.quantities = quantities
 		self.vals = vals
 
-	def add_change(self, idx, val):
-		self.indicies.append(idx)
-		self.vals.append(val)
+	def add_change(self, quantity, val):
+		if quantity not in self.quantities:
+			self.quantities.append(quantity)
+			self.vals.append(val)
+		else:
+			index = self.quantities.index(quantity)
+			for v_index in range(len(val)):
+				if self.vals[index][v_index] == Termination.UNCHANGED:
+					self.vals[index][v_index] = val[v_index]
+				elif val[v_index] != Termination.UNCHANED and val[v_index] != self.vals[index][v_index]:
+					# Cannot be combined, two different values to which it should be changed
+					print("Warning: two value changed cannot be combined. Index " + str(index) + ", previously \"" + str(self.vals[index][v_index]) + "\", new value \"" + str(val[v_index]) + "\"")
+					return False
+		return True
 
 
 class Entity:
@@ -60,9 +71,13 @@ class Quantity:
 		self.fixed_magnitude = None
 		self.relations = list()
 
-	def set_value(self, magnitude, derivative):
-		self.magnitude = magnitude
-		self.derivative = 0
+	def set_value(self, magnitude=None, derivative=None, derivative_2nd=None):
+		if magnitude is not None:
+			self.magnitude = magnitude
+		if derivative is not None:
+			self.derivative = derivative
+		if derivative_2nd is not None:
+			self.derivative_2nd = derivative_2nd
 
 	def add_relation(self, rel):
 		self.relations.append(rel)
