@@ -1,5 +1,5 @@
-from state_graph import Entity, Quantity, Relationship, State, Termination, create_default_graph
-from visualization import visualize_state_graph, save_transitions, save_intra_state_trace
+from state_graph import Entity, Quantity, Relationship, State, Termination, create_default_graph, DEBUG
+from visualization import visualize_state_graph, save_transitions, save_intra_state_trace, save_inter_state_trace
 from copy import copy
 import sys 
 
@@ -13,41 +13,77 @@ class ContainerReasoner:
 		self.quantities = quantities
 		self.relations = relations
 
-	def start(self):
+	def try_all_states(self):
+		poss_vals = []
+		for q in self.quantities:
+			poss_vals.append(len(q.magn_space))
+			poss_vals.append(len(q.deriv_space))
+			if q.model_2nd_derivative:
+				poss_vals.append(len(q.deriv_2nd_space))
+		combs = ContainerReasoner.generate_all_combinations(len(poss_vals), poss_vals)
+		print("Number of possible combinations: " + str(len(combs)))
+		print("Possible values: " + str(poss_vals))
+
+		for c_index, c in enumerate(combs):
+			index = 0
+			quants = ContainerReasoner.copy_quantities(self.quantities)
+			for q in quants:
+				q.set_value(magnitude=q.magn_space[c[index]])
+				index += 1
+				q.set_value(derivative=q.deriv_space[c[index]])
+				index += 1
+				if q.model_2nd_derivative:
+					q.set_value(derivative_2nd=q.deriv_2nd_space[c[index]])
+					index += 1
+			if all([q.is_quantity_valid(quants) for q in quants]):
+				self.add_to_state_list(quants, None)
+			
+
+	def start(self, generate_all_states=False):
 		self.add_to_state_list(self.quantities, None)
+		if generate_all_states:
+			self.try_all_states()
 		print("Found " + str(len(self.state_list)) + " states")
+		print("Found " + str(sum([len(val) for key, val in self.state_connections.items()])) + " transitions")
 		visualize_state_graph("test_states.dot", self.state_list, self.state_connections)
 		save_transitions("test_states_transitions.txt", self.state_list, self.state_connections, self.state_transitions)
 		save_intra_state_trace("intra_state_trace.txt", self.relations, self.state_list)
+		save_inter_state_trace("inter_state_trace.txt", self.state_list, self.state_connections, self.state_transitions)
 
 
 	def find_next_states(self, quantities, orig_state):
+		global DEBUG
 		epsilon_transitions = self.create_epsilon_transitions(quantities)
 		value_terminations = self.create_value_terminations(quantities)
-		exogenous_terminations = self.create_exogenous_terminations(quantities[0])
+		exogenous_terminations = self.create_exogenous_terminations(quantities)
 		ambiguous_terminations = self.create_ambiguous_terminations(quantities)
 		poss_transitions = self.create_cross_product(epsilon_transitions, value_terminations + exogenous_terminations + ambiguous_terminations)
 		
 		for t in poss_transitions:
 			next_state_quant = self.create_next_state(ContainerReasoner.copy_quantities(quantities), t)
 			if next_state_quant is not None:
-				print("Creating new state by the following transition: ")
-				t.print()
+				if DEBUG:
+					print("Creating new state by the following transition: ")
+					t.print()
 				self.add_to_state_list(next_state_quant, orig_state, t)
 			else:
-				print("Invalid transition:")
-				t.print()
+				if DEBUG:
+					print("Invalid transition:")
+					t.print()
 
 
 	def add_to_state_list(self, quantities, orig_state, transition=None):
+		global DEBUG
 		s = State(quantities)
 		res = self.is_in_state_list(s)
 		if res < 0:
 			s_index = len(self.state_list)
-			print("Adding new state " + str(s_index))
-			s.print()
+			if DEBUG:
+				print("Adding new state " + str(s_index))
+				s.print()
 			self.state_list.append(s)
 			self.state_connections[s_index] = list()
+			self.state_transitions[s_index] = dict()
 			if orig_state is not None:
 				self.state_connections[s_index] = [self.state_list.index(orig_state)]
 				self.state_transitions[s_index] = {self.state_list.index(orig_state): transition}
@@ -55,7 +91,7 @@ class ContainerReasoner:
 		elif orig_state is not None:
 			if self.state_list.index(orig_state) not in self.state_connections[res] and res != self.state_list.index(orig_state):
 				self.state_connections[res].append(self.state_list.index(orig_state))
-				self.state_transitions[self.state_list.index(orig_state)][res] = transition
+				self.state_transitions[res][self.state_list.index(orig_state)] = transition
 
 
 	def is_in_state_list(self, s):
@@ -137,19 +173,22 @@ class ContainerReasoner:
 
 		return val_terms
 
-	def create_exogenous_terminations(self, quantity):
+	def create_exogenous_terminations(self, quantities):
 		# Check for single quantity, to what we can change the derivative. Note that staying the same is *not* a transition!
 		# For positive derivative => zero derivative
 		# For negative derivative => zero derivative
 		# For zero derivative => positive derivative (if magnitude != max, not possible for inflow), negative derivative (if magnitude != 0)
 		exog_terms = list()
-		if quantity.derivative == Quantity.POSITIVE or quantity.derivative == Quantity.NEGATIVE:
-			exog_terms.append(Termination(quantity, [Termination.UNCHANGED, Quantity.ZERO, Termination.UNCHANGED], term_type=Termination.EXOGENOUS))
-		if quantity.derivative == Quantity.ZERO:
-			if not (quantity.magnitude == quantity.magn_space[-1] and Quantity.is_landmark(quantity.magnitude)):
-				exog_terms.append(Termination(quantity, [Termination.UNCHANGED, Quantity.POSITIVE, Termination.UNCHANGED], term_type=Termination.EXOGENOUS))
-			if not (quantity.magnitude == quantity.magn_space[0] and Quantity.is_landmark(quantity.magnitude)):
-				exog_terms.append(Termination(quantity, [Termination.UNCHANGED, Quantity.NEGATIVE, Termination.UNCHANGED], term_type=Termination.EXOGENOUS))
+		for quantity in quantities:
+			if not quantity.exogenous:
+				continue
+			if quantity.derivative == Quantity.POSITIVE or quantity.derivative == Quantity.NEGATIVE:
+				exog_terms.append(Termination(quantity, [Termination.UNCHANGED, Quantity.ZERO, Termination.UNCHANGED], term_type=Termination.EXOGENOUS))
+			if quantity.derivative == Quantity.ZERO:
+				if not (quantity.magnitude == quantity.magn_space[-1] and Quantity.is_landmark(quantity.magnitude)):
+					exog_terms.append(Termination(quantity, [Termination.UNCHANGED, Quantity.POSITIVE, Termination.UNCHANGED], term_type=Termination.EXOGENOUS))
+				if not (quantity.magnitude == quantity.magn_space[0] and Quantity.is_landmark(quantity.magnitude)):
+					exog_terms.append(Termination(quantity, [Termination.UNCHANGED, Quantity.NEGATIVE, Termination.UNCHANGED], term_type=Termination.EXOGENOUS))
 		return exog_terms
 
 	def create_ambiguous_terminations(self, quantities):
@@ -165,7 +204,7 @@ class ContainerReasoner:
 				if q.derivative_2nd == Quantity.ZERO:
 					amb_terms.append(Termination(q, [Termination.UNCHANGED, Termination.UNCHANGED, Quantity.POSITIVE], term_type=Termination.AMBIGUOUS))
 					amb_terms.append(Termination(q, [Termination.UNCHANGED, Termination.UNCHANGED, Quantity.NEGATIVE], term_type=Termination.AMBIGUOUS))
-		print("Number of found ambiguous terminations: " + str(len(amb_terms)))
+
 		return amb_terms
 
 	def create_cross_product(self, epsilon_transitions, extra_terminations):
@@ -176,7 +215,6 @@ class ContainerReasoner:
 		poss_combs = ContainerReasoner.generate_all_combinations(len(extra_terminations))
 		poss_terminations = list()
 		for comb in poss_combs:
-			print("Creating transition for combination " + str(comb))
 			term = epsilon_transitions.copy()
 			valid_transition = True
 			for c, extra_term in zip(comb, extra_terminations):
@@ -229,13 +267,17 @@ class ContainerReasoner:
 		return None
 
 	@staticmethod
-	def generate_all_combinations(num):
+	def generate_all_combinations(num, poss=2):
 		all_combs = [list()]
-		for _ in range(num):
+		for i in range(num):
 			new_combs = list()
 			for c in all_combs:
-				new_combs.append(c + [1])
-				new_combs.append(c + [0])
+				if not isinstance(poss, list):
+					for r in [1,0]:
+						new_combs.append(c + [r])
+				else:
+					for r in range(poss[i]):
+						new_combs.append(c + [r])
 			all_combs = new_combs
 		return all_combs
 
@@ -310,21 +352,21 @@ class ReasonerTest:
 		q_volume = ReasonerTest.get_quantity(quantities, "Volume")
 
 		q_inflow.set_value(magnitude=Quantity.POSITIVE, derivative=Quantity.POSITIVE, derivative_2nd=Quantity.ZERO)
-		exog_terms_1 = self.reasoner.create_exogenous_terminations(q_inflow)
+		exog_terms_1 = self.reasoner.create_exogenous_terminations(quantities)
 		print("#"*50)
 		print("Found exogenous terminations for case 1:")
 		for term in exog_terms_1:
 			term.print()
 
 		q_inflow.set_value(magnitude=Quantity.ZERO, derivative=Quantity.ZERO, derivative_2nd=Quantity.ZERO)
-		exog_terms_2 = self.reasoner.create_exogenous_terminations(q_inflow)
+		exog_terms_2 = self.reasoner.create_exogenous_terminations(quantities)
 		print("#"*50)
 		print("Found exogenous terminations for case 2:")
 		for term in exog_terms_2:
 			term.print()
 
 		q_inflow.set_value(magnitude=Quantity.POSITIVE, derivative=Quantity.ZERO, derivative_2nd=Quantity.ZERO)
-		exog_terms_3 = self.reasoner.create_exogenous_terminations(q_inflow)
+		exog_terms_3 = self.reasoner.create_exogenous_terminations(quantities)
 		print("#"*50)
 		print("Found exogenous terminations for case 3:")
 		for term in exog_terms_3:
@@ -338,22 +380,27 @@ class ReasonerTest:
 		q_inflow = ReasonerTest.get_quantity(quantities, "Inflow")
 		q_outflow = ReasonerTest.get_quantity(quantities, "Outflow")
 		q_volume = ReasonerTest.get_quantity(quantities, "Volume")
-
-		q_inflow.set_value(magnitude=Quantity.ZERO, derivative=Quantity.POSITIVE, derivative_2nd=Quantity.ZERO)
+		
+		q_inflow.set_value(magnitude=Quantity.POSITIVE, derivative=Quantity.POSITIVE, derivative_2nd=Quantity.ZERO)
 		q_outflow.set_value(magnitude=Quantity.POSITIVE, derivative=Quantity.POSITIVE, derivative_2nd=Quantity.ZERO)
-		q_volume.set_value(magnitude=Quantity.MAX_VAL, derivative=Quantity.NEGATIVE, derivative_2nd=Quantity.POSITIVE)
-
+		q_volume.set_value(magnitude=Quantity.POSITIVE, derivative=Quantity.POSITIVE, derivative_2nd=Quantity.ZERO)
+		
 		eps_term = self.reasoner.create_epsilon_transitions(quantities)
 		val_terms = self.reasoner.create_value_terminations(quantities)
-		exog_terms = self.reasoner.create_exogenous_terminations(q_inflow)
-		eps_term.print()
-
-		poss_terms = self.reasoner.create_cross_product(eps_term, val_terms + exog_terms)
+		exog_terms = self.reasoner.create_exogenous_terminations(quantities)
+		ambig_terms = self.reasoner.create_ambiguous_terminations(quantities)
+		
+		poss_terms = self.reasoner.create_cross_product(eps_term, val_terms + exog_terms + ambig_terms) # val_terms + exog_terms + 
 		print("#"*50)
 		print("Found " + str(len(poss_terms)) + " possible terminations:")
 		for term in poss_terms:
 			term.print()
 
+		poss_terms[-2].print()
+		next_state_quant = self.reasoner.create_next_state(ContainerReasoner.copy_quantities(quantities), poss_terms[-2])
+		s = State(quantities)
+		s.print()
+		# sys.exit(1)
 		# TODO: Add real test condition here
 		return True
 
@@ -392,9 +439,10 @@ class ReasonerTest:
 
 
 if __name__ == '__main__':
-	tester = ReasonerTest()
-	tester.run_tests()
-	print(ContainerReasoner.generate_all_combinations(5))
+	if DEBUG:
+		tester = ReasonerTest()
+		tester.run_tests()
+		print(ContainerReasoner.generate_all_combinations(5))
 
 	r = ContainerReasoner()
 	r.start()

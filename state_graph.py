@@ -1,5 +1,7 @@
 
 
+DEBUG = False
+
 class Termination:
 
 	UNCHANGED = "unchanged"
@@ -29,6 +31,7 @@ class Termination:
 		self.types = term_type
 
 	def add_change(self, quantity, val, term_type=None):
+		global DEBUG
 		if term_type is None:
 			term_type = self.initial_term_type
 		if not isinstance(term_type, list):
@@ -46,15 +49,21 @@ class Termination:
 					self.types[index][v_index] = term_type[v_index]
 				elif val[v_index] != Termination.UNCHANGED and val[v_index] != self.vals[index][v_index]:
 					# Cannot be combined, two different values to which it should be changed
-					print("Warning: two value changed cannot be combined. Index " + str(index) + ", previously \"" + str(self.vals[index][v_index]) + "\", new value \"" + str(val[v_index]) + "\"")
+					if DEBUG:
+						print("Warning: two value changed cannot be combined. Index " + str(index) + ", previously \"" + str(self.vals[index][v_index]) + "\", new value \"" + str(val[v_index]) + "\"")
 					return False
 		return True
 
 	def combine_terminations(self, other_term):
+		truth_val = True
 		for q, v, t in zip(other_term.quantities, other_term.vals, other_term.types):
-			return self.add_change(q,v,t)
+			truth_val = truth_val and self.add_change(q,v,t)
+		return truth_val
 
 	def print(self):
+		global DEBUG
+		if not DEBUG:
+			return
 		print("="*40)
 		print("Termination output")
 		print("-"*40)
@@ -102,7 +111,7 @@ class Quantity:
 		MIN_VAL: True
 	}
 
-	def __init__(self, name, magn_space=None, deriv_space=None, deriv_2nd_space=None, model_2nd_derivative=True):
+	def __init__(self, name, magn_space=None, deriv_space=None, deriv_2nd_space=None, model_2nd_derivative=True, exogenous=False):
 		self.name = name
 		if magn_space is None:
 			magn_space = [Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL]
@@ -120,6 +129,7 @@ class Quantity:
 		self.derivative_fixed = False
 		self.derivative_2nd_fixed = False
 		self.model_2nd_derivative = model_2nd_derivative
+		self.exogenous = exogenous
 		self.relations = list()
 
 	def set_value(self, magnitude=None, derivative=None, derivative_2nd=None):
@@ -335,95 +345,6 @@ class Quantity:
 	def add_landmark_information(val_name, is_landmark):
 		Quantity.IS_LANDMARK[val_name] = is_landmark;
 
-	# def propagate_change(self, magn_change=None, deriv_change=None):
-	# 	# print("propagating change of state " + self.name)
-	# 	# Check if something changes, then...
-	# 	prop_deriv = False
-	# 	prop_magn = False
-	# 	if self.fixed_magnitude:
-	# 		magn_change = self.fixed_magnitude
-	# 	if magn_change:
-	# 		print("Magnitude change: " + str(magn_change))
-	# 		prop_magn = (magn_change not in self.change_magnitude)
-	# 		self.change_magnitude.append(magn_change)
-	# 		if magn_change == Quantity.MAX_VAL or magn_change == Quantity.MIN_VAL:
-	# 			deriv_change = Quantity.ZERO
-	# 			# TODO: Check what can go wrong here (overwriting previous derivative change. Needed for propagating the zero)
-	# 	if self.fixed_derivative is not None:
-	# 		deriv_change = self.fixed_derivative
-	# 		print(self.name + " -> Fixed change " + str(deriv_change))
-	# 	if deriv_change:
-	# 		print("Derivative change " + deriv_change + " for quantity " + self.name)
-	# 		prop_deriv = (deriv_change not in self.change_derivative)
-	# 		# print("Derivative change: " + str(deriv_change) + ". Propagated: " + str(prop_deriv))
-	# 		self.change_derivative.append(deriv_change)
-	# 	if not self.has_ambiguous_change()[0]:
-	# 		for r in self.relations:
-	# 			if prop_deriv and r.rel_opt == Relationship.PROPORTIONAL:
-	# 				# print("Propagate proportional relationship to state " + r.counter_part(self).name)
-	# 				d_c = deriv_change if r.positive else Quantity.invert_derivative(deriv_change)
-	# 				r.counter_part(self).propagate_change(magn_change=None, deriv_change=d_c)
-	# 			if prop_magn and r.rel_opt == Relationship.VALUE_EQ:
-	# 				if r.get_val(self) == magn_change:
-	# 					r.counter_part(self).propagate_change(magn_change=r.get_val(r.counter_part(self)), deriv_change=None)
-	# 			if prop_magn and r.rel_opt == Relationship.INFLUENCE and r.q1 == self:
-	# 				if magn_change == Quantity.ZERO:
-	# 					d_c = Quantity.ZERO
-	# 				else:
-	# 					d_c = Quantity.POSITIVE if r.positive else Quantity.NEGATIVE
-	# 				r.q2.propagate_change(magn_change=None, deriv_change=d_c)
-
-		
-
-	# def has_ambiguous_change(self):
-	# 	unique_changes = list(set([c for c in self.change_derivative if c != Quantity.ZERO]))
-	# 	if len(unique_changes) > 1:
-	# 		return (True, unique_changes + [Quantity.ZERO], 1)
-	# 	unique_changes = list(set([c for c in self.change_magnitude if c != Quantity.POSITIVE]))
-	# 	if len(unique_changes) > 1:
-	# 		return (True, unique_changes + [Quantity.POSITIVE], 2)
-	# 	return (False, None, -1)
-
-	# def apply_change(self):
-	# 	if len(self.change_derivative) > 0:
-	# 		unique_changes = list(set([c for c in self.change_derivative if c != Quantity.ZERO]))
-	# 		if len(unique_changes) == 0:
-	# 			self.derivative = Quantity.ZERO
-	# 		else:
-	# 			self.derivative = unique_changes[0]
-	# 		self.change_derivative = list()
-	# 	if len(self.change_magnitude) > 0:
-	# 		unique_changes = list(set([c for c in self.change_magnitude if c != Quantity.POSITIVE]))
-	# 		if len(unique_changes) == 0:
-	# 			self.magnitude = Quantity.POSITIVE
-	# 		else:
-	# 			self.magnitude = unique_changes[0]
-	# 		self.change_magnitude = list()
-	# 	self.fixed_derivative = None
-	# 	self.fixed_magnitude = None
-
-	# def apply_pure_derivative_change(self):
-	# 	if (self.derivative == Quantity.NEGATIVE and self.magnitude == Quantity.MAX_VAL) or \
-	# 	   (self.derivative == Quantity.POSITIVE and self.magnitude == Quantity.ZERO):
-	# 		# self.magnitude = Quantity.POSITIVE
-	# 		self.propagate_change(magn_change=Quantity.POSITIVE, deriv_change=None)
-
-	# def check_unchanged_states(self):
-	# 	if len(self.change_derivative) == 0:
-	# 		self.propagate_change(deriv_change=self.derivative)
-	# 	if len(self.change_magnitude) == 0:
-	# 		self.propagate_change(magn_change=self.magnitude)
-
-	# def get_possible_change(self):
-	# 	if self.derivative == Quantity.ZERO:
-	# 		return None
-	# 	elif self.derivate == Quantity.POSITIVE and self.magn_space.index(self.magnitude) < (len(self.magn_space) - 1):
-	# 		return self.magn_space[self.magn_space.index(self.magnitude)+1]
-	# 	elif self.derivate == Quantity.NEGATIVE and self.magn_space.index(self.magnitude) > 0:
-	# 		return self.magn_space[self.magn_space.index(self.magnitude)-1]
-	# 	else:
-	# 		return None
-
 
 class Relationship:
 
@@ -487,6 +408,9 @@ class State:
 		return self.value_dict == other.value_dict
 
 	def print(self):
+		global DEBUG
+		if not DEBUG:
+			return
 		print("="*30)
 		print("State")
 		print("-"*30)
@@ -495,51 +419,70 @@ class State:
 		print("="*30)
 
 
-def create_default_graph():
-	# D = Entity(name="Drain")
+
+
+#######################
+## Graph definitions ##
+#######################
+
+
+def create_default_graph(bidirectional_vc=False):
+	D = Entity(name="Drain")
 	T = Entity(name="Tab")
 	C = Entity(name="Container")
 
-	QD = Quantity(name="Outflow", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=False)
-	C.add_quantity(QD)
-	QT = Quantity(name="Inflow", magn_space=[Quantity.ZERO, Quantity.POSITIVE], model_2nd_derivative=False)
+	QD = Quantity(name="Outflow", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=True)
+	D.add_quantity(QD)
+	QT = Quantity(name="Inflow", magn_space=[Quantity.ZERO, Quantity.POSITIVE], model_2nd_derivative=False, exogenous=True)
 	T.add_quantity(QT)
-	QC = Quantity(name="Volume", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL])
+	QC = Quantity(name="Volume", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=True)
 	C.add_quantity(QC)
-	# QO = Quantity(name="Overflow", magn_space=[Quantity.ZERO, Quantity.POSITIVE])
-	# C.add_quantity(QO)
-	# QH = Quantity(name="Height", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=False)
-	# C.add_quantity(QH)
-	# QP = Quantity(name="Pressure", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=False)
-	# C.add_quantity(QP)
-
+	
 	rels = [Relationship(rel_opt=Relationship.INFLUENCE, q1=QT, q2=QC, positive=True),
 			Relationship(rel_opt=Relationship.INFLUENCE, q1=QD, q2=QC, positive=False),
 			Relationship(rel_opt=Relationship.PROPORTIONAL, q1=QC, q2=QD, positive=True),
 			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QC, q2=QD, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
-			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QC, q2=QD, add_params=(Quantity.ZERO, Quantity.ZERO)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QD, q2=QC, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QD, q2=QC, add_params=(Quantity.ZERO, Quantity.ZERO)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QC, q2=QO, add_params=(Quantity.ZERO, Quantity.ZERO)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QC, q2=QO, add_params=(Quantity.POSITIVE, Quantity.ZERO)),
-			# Relationship(rel_opt=Relationship.INFLUENCE, q1=QO, q2=QC, positive=False)
-			
-			# Relationship(rel_opt=Relationship.PROPORTIONAL, q1=QC, q2=QH, positive=True),
-			# Relationship(rel_opt=Relationship.PROPORTIONAL, q1=QH, q2=QP, positive=True),
-			# Relationship(rel_opt=Relationship.PROPORTIONAL, q1=QP, q2=QD, positive=True),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QC, q2=QH, add_params=(Quantity.ZERO, Quantity.ZERO)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QC, q2=QH, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QH, q2=QC, add_params=(Quantity.ZERO, Quantity.ZERO)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QH, q2=QC, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QP, q2=QH, add_params=(Quantity.ZERO, Quantity.ZERO)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QP, q2=QH, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QH, q2=QP, add_params=(Quantity.ZERO, Quantity.ZERO)),
-			# Relationship(rel_opt=Relationship.VALUE_EQ, q1=QH, q2=QP, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
-			
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QC, q2=QD, add_params=(Quantity.ZERO, Quantity.ZERO))
 			]
 
-	return [T, C], [QT, QD, QC], rels # ,QO, QH, QP
+	if bidirectional_vc:
+		rels += [Relationship(rel_opt=Relationship.VALUE_EQ, q1=QD, q2=QC, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
+				 Relationship(rel_opt=Relationship.VALUE_EQ, q1=QD, q2=QC, add_params=(Quantity.ZERO, Quantity.ZERO))]
 
+	return [T, C, D], [QT, QD, QC], rels
+
+def create_extended_graph():
+	QD = Quantity(name="Outflow", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=True)
+	D.add_quantity(QD)
+	QT = Quantity(name="Inflow", magn_space=[Quantity.ZERO, Quantity.POSITIVE], model_2nd_derivative=False, exogenous=True)
+	T.add_quantity(QT)
+	QC = Quantity(name="Volume", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=True)
+	C.add_quantity(QC)
+	QH = Quantity(name="Height", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=True)
+	C.add_quantity(QH)
+	QP = Quantity(name="Pressure", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=True)
+	C.add_quantity(QP)
+	
+	rels = [Relationship(rel_opt=Relationship.INFLUENCE, q1=QT, q2=QC, positive=True),
+			Relationship(rel_opt=Relationship.INFLUENCE, q1=QD, q2=QC, positive=False),
+			Relationship(rel_opt=Relationship.PROPORTIONAL, q1=QC, q2=QH, positive=True),
+			Relationship(rel_opt=Relationship.PROPORTIONAL, q1=QH, q2=QP, positive=True),
+			Relationship(rel_opt=Relationship.PROPORTIONAL, q1=QP, q2=QD, positive=True),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QC, q2=QH, add_params=(Quantity.ZERO, Quantity.ZERO)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QC, q2=QH, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QH, q2=QC, add_params=(Quantity.ZERO, Quantity.ZERO)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QH, q2=QC, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QP, q2=QH, add_params=(Quantity.ZERO, Quantity.ZERO)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QP, q2=QH, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QH, q2=QP, add_params=(Quantity.ZERO, Quantity.ZERO)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QH, q2=QP, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QD, q2=QP, add_params=(Quantity.ZERO, Quantity.ZERO)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QD, q2=QP, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QP, q2=QD, add_params=(Quantity.ZERO, Quantity.ZERO)),
+			Relationship(rel_opt=Relationship.VALUE_EQ, q1=QP, q2=QD, add_params=(Quantity.MAX_VAL, Quantity.MAX_VAL)),
+			]
+
+	return [T, C, D], [QT, QD, QC, QH, QP], rels
 
 
 
