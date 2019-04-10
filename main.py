@@ -4,6 +4,7 @@
 from qreasoner import QualitativeReasoner
 from state_graph import create_default_graph, create_extended_graph, set_debugging
 import argparse
+import os 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-d","--debug", help="Increases output to all generated transitions and states", action="store_true")
@@ -32,3 +33,4 @@ reasoner.simulate(generate_all_states=args.all_states,
 				  filename_state_transitions=args.state_trans,
 				  filename_intra_state=args.intra_state,
 				  filename_inter_state=args.inter_state)
+os.system("dot -Tpdf " + args.state_graph + " -o " + args.state_graph.rsplit(".",1)[0] + ".pdf")
