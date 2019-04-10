@@ -1,15 +1,31 @@
 
-
+# Parameter for enabling debugging (printing transitions, states, ...) or not
 DEBUG = False
 
+def set_debugging(debug_active=False):
+	global DEBUG
+	DEBUG = debug_active
+
+def debugging_active():
+	global DEBUG
+	return DEBUG
+
+
+#################
+## Class for defining a termination. Is the object on which first part of reasoning engine relies
+## Can combines multiple termination so that it converts to a transition
+################# 
 class Termination:
 
+	# Default to indicate that a value does not change
 	UNCHANGED = "unchanged"
+	# Pre-defined termination types. Used only for tracing
 	EPSILON = "Epsilon termination"
 	VALUE = "Value termination"
 	EXOGENOUS = "Exogenous termination"
 	AMBIGUOUS = "Ambiguous termination"
 
+	# Define quantities, that change, and how they change (vals). Term type is for indicating what kind of termination it is (epsilon, value, ...)
 	def __init__(self, quantities=None, vals=None, term_type=None):
 		if quantities is None:
 			quantities = list()
@@ -30,6 +46,7 @@ class Termination:
 			self.initial_term_type = None
 		self.types = term_type
 
+	# Appends a new change of a quantity value to the current termination
 	def add_change(self, quantity, val, term_type=None):
 		global DEBUG
 		if term_type is None:
@@ -54,12 +71,14 @@ class Termination:
 					return False
 		return True
 
+	# Combines two terminations by copying the changes of one to the existing one here
 	def combine_terminations(self, other_term):
 		truth_val = True
 		for q, v, t in zip(other_term.quantities, other_term.vals, other_term.types):
 			truth_val = truth_val and self.add_change(q,v,t)
 		return truth_val
 
+	# For debugging
 	def print(self):
 		global DEBUG
 		if not DEBUG:
@@ -70,6 +89,7 @@ class Termination:
 		print(self.to_string())
 		print("="*40)
 
+	# Converts termination to readible text
 	def to_string(self):
 		s = ""
 		for q, q_vals, v_types in zip(self.quantities, self.vals, self.types):
@@ -78,12 +98,16 @@ class Termination:
 					s += (((str(t_type) + ": ") if t_type is not None else "") + "Quantity \"" + str(q.name) + "\": changing " + m_name + " from \"" + str(prev_val) + "\" to \"" + str(v) + "\"") + "\n"
 		return s
 		
-
+	# Deepcopy of termination
 	def copy(self):
 		term = Termination(self.quantities[:], [v[:] for v in self.vals], [t[:] for t in self.types])
 		return term
 
 
+
+#################
+## Class for defining a entity. Does not affect reasoning engine, only for visualization purpose
+################# 
 class Entity:
 
 	def __init__(self, name):
@@ -94,15 +118,19 @@ class Entity:
 		self.quantities.append(q)
 
 
-
+#################
+## Class for defining a quantity
+################# 
 class Quantity:
 
+	# Default quantity space values
 	ZERO = '0'
 	NEGATIVE = '-'
 	POSITIVE = '+'
 	MAX_VAL = 'max'
 	MIN_VAL = 'min'
 
+	# Default landmark information
 	IS_LANDMARK = {
 		ZERO: True,
 		NEGATIVE: False,
@@ -132,6 +160,10 @@ class Quantity:
 		self.exogenous = exogenous
 		self.relations = list()
 
+	def add_relation(self, rel):
+		self.relations.append(rel)
+		print("Adding relation " + rel.to_string() + " to " + self.name)
+
 	def set_value(self, magnitude=None, derivative=None, derivative_2nd=None):
 		if magnitude is not None:
 			self.magnitude = magnitude
@@ -140,18 +172,17 @@ class Quantity:
 		if derivative_2nd is not None:
 			self.derivative_2nd = derivative_2nd
 
+	# Removes fixing that was introduced by transitions
 	def remove_fixing(self):
 		self.magnitude_fixed = False
 		self.derivative_fixed = False
 		self.derivative_2nd_fixed = False
 
-	def add_relation(self, rel):
-		self.relations.append(rel)
-		print("Adding relation " + rel.to_string() + " to " + self.name)
-
+	# Checks whether a quantity is valid or destroys any constraint
 	def is_quantity_valid(self, quantities):
 		return (self.check_causal_relations(quantities) and self.check_quantity_space_boundaries())
 		
+	# Assumption: we do not allow any derivatives pointing outside the value space
 	def check_quantity_space_boundaries(self):
 		# For simplicity, we do not check the same for derivative and 2nd order derivative
 		if (self.derivative == Quantity.POSITIVE or (self.derivative == Quantity.ZERO and self.derivative_2nd == Quantity.POSITIVE)) and self.magn_space.index(self.magnitude) == (len(self.magn_space) - 1) and Quantity.is_landmark(self.magnitude):
@@ -160,6 +191,7 @@ class Quantity:
 			return False
 		return True
 
+	# Collects all influences on values of this quantity. Used for checking relations
 	def get_influences_on_quantity(self, quantities):
 		magn_constraints = []
 		deriv_influences = []
@@ -187,6 +219,7 @@ class Quantity:
 					magn_constraints.append(rel.get_val(self))
 		return magn_constraints, deriv_influences, deriv_2nd_influences
 
+	# Check whether all causal relations are fulfilled (ambiguity allowed)
 	def check_causal_relations(self, quantities):
 		magn_constraints, deriv_influences, deriv_2nd_influences = self.get_influences_on_quantity(quantities)
 
@@ -217,6 +250,7 @@ class Quantity:
 		
 		return True
 
+	# Tries to make quantity valid if not already the case
 	def make_quantity_valid(self, quantities):
 		if not self.check_quantity_space_boundaries() and not self.resolve_quantity_space_issues():
 			return False
@@ -224,6 +258,7 @@ class Quantity:
 			return False
 		return True
 
+	# Tries to resolve quantity space derivatives that point outside valid values. Discontinuity not allowed
 	def resolve_quantity_space_issues(self):
 		if self.magn_space.index(self.magnitude) == (len(self.magn_space) - 1) and Quantity.is_landmark(self.magnitude):
 			if self.derivative == Quantity.POSITIVE:
@@ -254,6 +289,7 @@ class Quantity:
 					self.derivative_2nd_fixed = True
 		return True
 
+	# Tries to resolve influences of other quantities on itself.
 	def resolve_causal_relation_issues(self, quantities):
 		magn_constraints, deriv_influences, deriv_2nd_influences = self.get_influences_on_quantity(quantities)
 
@@ -316,11 +352,15 @@ class Quantity:
 
 		return True
 
+	# Print quantity to screen for debugging
 	def print(self):
-		print("Quantity \"" + str(self.name) + "\": Magnitude = " + str(self.magnitude) + (" (fixed)" if self.magnitude_fixed else "") + \
-			  ", derivative " + str(self.derivative) + (" (fixed)" if self.derivative_fixed else "") + \
-			  ", 2nd oder derivative " + str(self.derivative_2nd) + (" (fixed)" if self.derivative_2nd_fixed else ""))
+		global DEBUG
+		if DEBUG:
+			print("Quantity \"" + str(self.name) + "\": Magnitude = " + str(self.magnitude) + (" (fixed)" if self.magnitude_fixed else "") + \
+				  ", derivative " + str(self.derivative) + (" (fixed)" if self.derivative_fixed else "") + \
+				  ", 2nd oder derivative " + str(self.derivative_2nd) + (" (fixed)" if self.derivative_2nd_fixed else ""))
 
+	# Inverts derivative
 	@staticmethod
 	def inver_derivative(d):
 		if d == Quantity.ZERO:
@@ -333,6 +373,7 @@ class Quantity:
 			print("Warning: unknown derivative \"" + str(d) + "\" could not be inverted")
 			return d
 
+	# Function for checking whether a value is a landmark or not. Assumes that all values are uniquely defined by a name
 	@staticmethod
 	def is_landmark(val):
 		if val not in Quantity.IS_LANDMARK:
@@ -341,11 +382,15 @@ class Quantity:
 		else:
 			return Quantity.IS_LANDMARK[val]
 
+	# Adds a new quantity value and saves landmark information
 	@staticmethod
 	def add_landmark_information(val_name, is_landmark):
 		Quantity.IS_LANDMARK[val_name] = is_landmark;
 
-
+#################
+## Class for defining a relationship between two quantities
+## Includes influence, proportional, and value constraint
+################# 
 class Relationship:
 
 	PROPORTIONAL = 1
@@ -394,6 +439,10 @@ class Relationship:
 			print("Warning: value could not been found in relationship")
 			return None
 
+#################
+## Class for defining a state
+## Saves all values at a state
+################# 
 class State:
 
 	def __init__(self, quantities):
@@ -452,6 +501,10 @@ def create_default_graph(bidirectional_vc=False):
 	return [T, C, D], [QT, QD, QC], rels
 
 def create_extended_graph():
+	D = Entity(name="Drain")
+	T = Entity(name="Tab")
+	C = Entity(name="Container")
+
 	QD = Quantity(name="Outflow", magn_space=[Quantity.ZERO, Quantity.POSITIVE, Quantity.MAX_VAL], model_2nd_derivative=True)
 	D.add_quantity(QD)
 	QT = Quantity(name="Inflow", magn_space=[Quantity.ZERO, Quantity.POSITIVE], model_2nd_derivative=False, exogenous=True)
