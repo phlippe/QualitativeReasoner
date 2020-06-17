@@ -5,7 +5,7 @@ Authors:
 * Shantanu Chandra
 
 ## Requirements
-The reasoning engine is written in the programming language Python version 3.7.1. We expect this code to also run for any other Python version 3.x.x to be executable. No need of any special package is required for this program. However, in case of running into troubles, please don't hesitate to contact us (E-mail: phillip.lippe@googlemail.com).
+The reasoning engine is written in the programming language Python version 3.7.1. We expect this code to also run for any other Python version 3.x.x to be executable. No need of any special package is required for this program.
 
 ## Python executable
 To run the qualitative reasoning engine, please run the command "python main.py". The algorithm can parameterized by the following settings:
@@ -45,5 +45,5 @@ Note that the state graph is automatically converted into a pdf. If a different 
 We ran the reasoning engine on all given graphs and saved the outputs in a separate folder which is submitted here as well (folder "example_graphs/"). The first option represents the "default" model, the second the "bidirectional" and the third the "extended" version. All graphs are also executed with generating all states (and not only the ones reachable from initial zero state).
 
 ## Creating own graphs
-As the reasoning engine is fairly generic, it is also possible to create different systems and reason about them equally. To do that, please have a look at the bottom of the file "state_graph.py". There you can find two functions that describe the default and extended model. These descriptions can be either extended or completely new graphs can be created in a new function. We assume the code to be intuitive and the examples of the container system should give a good introduction in how to create a new graph. Otherwise, please don't hesitate to contact us (E-mail: phillip.lippe@googlemail.com).
+As the reasoning engine is fairly generic, it is also possible to create different systems and reason about them equally. To do that, please have a look at the bottom of the file "state_graph.py". There you can find two functions that describe the default and extended model. These descriptions can be either extended or completely new graphs can be created in a new function. We assume the code to be intuitive and the examples of the container system should give a good introduction in how to create a new graph.
 
